@@ -131,9 +131,9 @@ export DB_DATABASE_NAME=$(echo $credentials | jq -r ".db_name") && \
 export DB_USER=$(echo $credentials | jq -r ".username") && \
 export DB_PASSWORD=$(echo $credentials | jq -r ".password") && \
 export DB_PORT=$(echo $credentials | jq -r ".port") && \
+flyway -url=jdbc:mysql://${DB_HOST}:${DB_PORT}/${DB_DATABASE_NAME} -user=${DB_USER} -password=${DB_PASSWORD} repair && \
 flyway -url=jdbc:mysql://${DB_HOST}:${DB_PORT}/${DB_DATABASE_NAME} -user=${DB_USER} -password=${DB_PASSWORD} -baselineOnMigrate=true migrate'
   cf run-and-wait $CF_APP   "$FLYWAY_ENTRY_COMMAND"
-
 }
 
 CF_API=${INPUT_CF_API:-api.fr.cloud.gov}
