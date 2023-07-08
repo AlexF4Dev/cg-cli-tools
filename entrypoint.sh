@@ -113,6 +113,35 @@ deploy_app_from_config() {
 	cf set-droplet  $APP_NAME  $DROPLET_GUID
 }
 
+liquibase_migrate() {
+  LIQUIBASE_DOCKER_COMMAND_JSON=$1
+
+  local CF_APP=$(jq -r '.app_instance' <<< $1)
+  local CF_SERVICE=$(jq -r '.service_instance' <<< $1)
+  echo 2>&1 "$CF_SERVICE"
+
+  cf install-plugin https://github.com/AlexF4Dev/cf-run-and-wait/releases/download/0.3/cf-run-and-wait_0.3_linux_amd64 -f
+
+  LIQUIBASE_ENTRY_COMMAND="sed -i 's/labshare/${INPUT_DATABASE_NAME:=labshare}/g' /liquibase/liquibase.properties && "
+  LIQUIBASE_ENTRY_COMMAND+='credentials=$(echo "$VCAP_SERVICES" | jq ".[] | .[] | select(.instance_name==\"'
+  LIQUIBASE_ENTRY_COMMAND+=$CF_SERVICE
+  LIQUIBASE_ENTRY_COMMAND+='\") | .credentials") && \
+export DB_HOST=$(echo $credentials | jq -r ".host") && \
+export DB_DATABASE_NAME=$(echo $credentials | jq -r ".db_name") && \
+export DB_USER=$(echo $credentials | jq -r ".username") && \
+export DB_PASSWORD=$(echo $credentials | jq -r ".password") && \
+export DB_PORT=$(echo $credentials | jq -r ".port") && \
+liquibase --url=jdbc:mysql://${DB_HOST}:${DB_PORT}/'
+
+LIQUIBASE_ENTRY_COMMAND+=${INPUT_DATABASE_NAME}
+LIQUIBASE_ENTRY_COMMAND+='?createDatabaseIfNotExist=true --username=${DB_USER} --password=${DB_PASSWORD} --changeLogFile="/liquibase/changelog/changelog.xml" update'
+
+echo INPUT_DATABASE_NAME=$INPUT_DATABASE_NAME
+echo LIQUIBASE_ENTRY_COMMAND=$LIQUIBASE_ENTRY_COMMAND
+cf run-and-wait $CF_APP   "$LIQUIBASE_ENTRY_COMMAND"
+}
+
+
 flyway_migrate() {
   FLYWAY_DOCKER_COMMAND_JSON=$1
 
@@ -146,6 +175,14 @@ if [[ -n "$INPUT_FLYWAY_DOCKER_COMMAND" ]]; then
   echo "Running command: $INPUT_FLYWAY_DOCKER_COMMAND"
   
   flyway_migrate "$INPUT_FLYWAY_DOCKER_COMMAND"
+  
+  exit 0
+fi
+
+if [[ -n "$INPUT_LIQUIBASE_DOCKER_COMMAND" ]]; then
+  echo "Running command: $INPUT_LIQUIBASE_DOCKER_COMMAND"
+  
+  liquibase_migrate "$INPUT_LIQUIBASE_DOCKER_COMMAND"
   
   exit 0
 fi
